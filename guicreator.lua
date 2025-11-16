@@ -2,6 +2,7 @@
 
 -- Accept player as parameter
 local player = ...
+local playerGui = player:WaitForChild("PlayerGui")
 
 -- Safety check
 if not player or not player:IsA("Player") then
@@ -77,3 +78,131 @@ TextLabel3.TextColor3 = Color3.fromRGB(255, 255, 255)
 TextLabel3.TextScaled = true
 TextLabel3.Parent = Frame2
 TextLabel3.TextXAlignment = Enum.TextXAlignment.Left
+
+local localScript = Instance.new("LocalScript")
+localScript.Name = "DiagnosticsController"
+localScript.Parent = ScreenGui
+localScript.Source = [[
+--[[
+	DiagnosticsController.lua
+	==================
+	This LocalScript ensures that the FaultReportInterface GUI remains fully visible
+	at all times in case of a error. It enforces visibility recursively on all descendant
+	GuiObjects, handles dynamically added elements, and restores the GUI if it is
+	reparented or removed.
+]]
+
+-- Services
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+--Local player reference
+local LocalPlayer = Players.LocalPlayer
+assert(LocalPlayer, "[FaultReportHandler] LocalPlayer not found!")
+
+-- PlayerGui reference
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+assert(PlayerGui, "[FaultReportHandler] PlayerGui not found!")
+
+-- Top-level ScreenGui
+local FaultReportInterface = PlayerGui:WaitForChild("FaultReportInterface")
+assert(FaultReportInterface:IsA("ScreenGui"), "[FaultReportHandler] FaultReportInterface is not a ScreenGui!")
+
+--[[==========================================================================
+	Function: EnforceVisibility
+	-----------------------------------
+	Recursively enforces Enabled = true for the ScreenGui and Visible = true for
+	all GuiObject descendants. Also hooks ChildAdded to ensure dynamically added
+	elements remain visible.
+===========================================================================]]
+local function EnforceVisibility(GuiObject)
+	if not GuiObject or not GuiObject:IsA("GuiObject") then return end
+
+	-- Force visibility immediately
+	GuiObject.Visible = true
+
+	-- Hook Visible property changes
+	GuiObject:GetPropertyChangedSignal("Visible"):Connect(function()
+		if GuiObject.Visible == false then
+			GuiObject.Visible = true
+		end
+	end)
+
+	-- Hook destruction for this GuiObject
+	GuiObject.Destroying:Connect(function()
+		if GuiObject.Parent then
+			task.spawn(function()
+				local Clone = GuiObject:Clone()
+				Clone.Parent = GuiObject.Parent
+				EnforceVisibility(Clone)
+			end)
+		end
+	end)
+
+	-- Recurse through children
+	for _, Child in ipairs(GuiObject:GetChildren()) do
+		EnforceVisibility(Child)
+	end
+
+	-- Hook dynamically added children
+	GuiObject.ChildAdded:Connect(function(Child)
+		EnforceVisibility(Child)
+	end)
+end
+
+--[[==========================================================================
+	Anti-Delete System
+	--------------------------
+	Monitors the FaultReportInterface for destruction. If destroyed, clones it
+	and restores it in PlayerGui.
+===========================================================================]]
+
+local function InitializeAntiDeletion(GuiObject)
+	print(GuiObject.Name)
+	if not GuiObject or not GuiObject:IsA("ScreenGui") then return end
+
+	GuiObject.Destroying:Connect(function()
+		warn("[FaultReportHandler] FaultReportInterface is being destroyed! Restoring...")
+
+		local Clone = GuiObject:Clone()
+		Clone.Parent = GuiObject.Parent
+
+		EnforceVisibility(Clone)
+		
+		InitializeAntiDeletion(Clone)
+	end)
+end
+
+--[[==========================================================================
+	Continuous Enforcement Loop
+	----------------------------------------
+	Ensures the ScreenGui itselfs stays Enabled = true.
+===========================================================================]]
+task.spawn(function()
+	while task.wait() do
+		if FaultReportInterface.Enabled ~= true then
+			FaultReportInterface.Enabled = true
+		end
+		
+		for _, GuiObject in ipairs(FaultReportInterface:GetDescendants()) do
+			EnforceVisibility(GuiObject)
+			InitializeAntiDeletion(GuiObject)
+		end
+	end
+end)
+
+--[[==========================================================================
+	Ancestry Protection
+	--------------------------
+	If the ScreenGui is removed or reparented, restore it immediately to PlayerGui.
+===========================================================================]]
+FaultReportInterface.AncestryChanged:Connect(function(_, Parent)
+	if Parent ~= PlayerGui then
+		warn("[FaultReportHandler] FaultReportInterface removed or reparented! Restoring...")
+		FaultReportInterface.Parent = PlayerGui
+	end
+end)
+
+InitializeAntiDeletion(FaultReportInterface)
+
+]]
