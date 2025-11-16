@@ -1,12 +1,20 @@
-local Players = game:GetService("Players")
-local Player = Players.LocalPlayer
+-- FaultReportInterface.lua (for GitHub)
+
+-- Accept player as parameter
+local player = ...
+
+-- Safety check
+if not player or not player:IsA("Player") then
+    warn("[FaultReportInterface] Invalid player passed!")
+    return
+end
 
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "FaultReportInterface"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.IgnoreGuiInset = true
 ScreenGui.DisplayOrder = 25
-ScreenGui.Parent = Player.PlayerGui
+ScreenGui.Parent = player:WaitForChild("PlayerGui")
 
 local Frame1 = Instance.new("Frame")
 Frame1.Name = "FaultBackdrop"
